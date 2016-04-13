@@ -1,3 +1,1 @@
-export default function Scope() {
-
-}
+export default function Scope() {}
