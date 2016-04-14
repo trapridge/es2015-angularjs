@@ -26,5 +26,8 @@ module.exports = function (config) {
     jscsPreprocessor: {
       configPath: '.jscsrc',
     },
-  });
-};
+    reporters: [
+      'spec',
+    ],
+  })
+}
