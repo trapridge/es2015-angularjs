@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$USER_HOME$/Code/personal/es2015-angularjs/.idea/es6-angularjs.iml" filepath="$USER_HOME$/Code/personal/es2015-angularjs/.idea/es6-angularjs.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/es6-angularjs.iml" filepath="$PROJECT_DIR$/.idea/es6-angularjs.iml" />
     </modules>
   </component>
 </project>
