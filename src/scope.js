@@ -5,7 +5,7 @@ export default class Scope {
     this.$$watchers = []
   }
 
-  $watch(watchFn, listenerFn = () => {}) {
+  $watch(watchFn = () => {}, listenerFn = () => {}) {
     const watcher = { watchFn, listenerFn, lastValue: initialValue }
     this.$$watchers.push(watcher)
 
@@ -17,8 +17,17 @@ export default class Scope {
   }
 
   $digest() {
+    let stillDirty
+    do {
+      stillDirty = this._digestOnce()
+    }
+    while (stillDirty)
+  }
+
+  _digestOnce() {
     let newValue
     let oldValue
+    let dirty = false
 
     this.$$watchers.forEach(watcher => {
       newValue = watcher.watchFn(this)
@@ -31,7 +40,10 @@ export default class Scope {
           oldValue === initialValue ? newValue : oldValue,
           this
         )
+        dirty = true
       }
     })
+
+    return dirty
   }
 }
