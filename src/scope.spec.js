@@ -71,7 +71,7 @@ describe('Scope', function () {
 
     it('calls listener with new value as old value the first time', () => {
       scope.someValue = 123
-      var oldValueGiven
+      var oldValueGiven = -1
       scope.$watch(
         scope => scope.someValue,
         (newValue, oldValue, scope) => { oldValueGiven = oldValue }
@@ -116,28 +116,110 @@ describe('Scope', function () {
       expect(scope.initial).toBe('B.')
     })
 
-    // it('gives up on the watches after 10 iterations', () => {
-    //   scope.counterA = 0
-    //   scope.counterB = 0
-    //
-    //   scope.$watch(
-    //     scope => scope.counterA,
-    //     (newValue, oldValue, scope) => {
-    //       scope.counterB++
-    //     }
-    //   )
-    //
-    //   scope.$watch(
-    //     scope => scope.counterB,
-    //     (newValue, oldValue, scope) => {
-    //       scope.counterA++
-    //     }
-    //   )
-    //
-    //   expect(() => {
-    //     scope.$digest()
-    //   }).toThrow()
-    // })
+    it('gives up on the watches after 10 iterations', () => {
+      scope.counterA = 0
+      scope.counterB = 0
+    
+      scope.$watch(
+        scope => scope.counterA,
+        (newValue, oldValue, scope) => {
+          scope.counterB++
+        }
+      )
+    
+      scope.$watch(
+        scope => scope.counterB,
+        (newValue, oldValue, scope) => {
+          scope.counterA++
+        }
+      )
+    
+      expect(() => {
+        scope.$digest()
+      }).toThrow()
+    })
+
+    it('ends the digest when the last watch is clean', () => {
+      scope.array = [...Array(100)].map((v, i) => i)
+      let watchExecutions = 0
+
+      scope.array.forEach((v, i) => {
+        scope.$watch(
+          scope => {
+            watchExecutions += 1
+            return scope.array[i]
+          },
+          (newValue, oldValue, scope) => {
+            // console.log(newValue)
+          }
+        )
+      })
+
+      scope.$digest()
+      expect(watchExecutions).toBe(200)
+
+      scope.array[0] = 420
+      scope.$digest()
+      expect(watchExecutions).toBe(301)
+    })
+
+    it('does not end digest so that new watches are not run', () => {
+      scope.aValue = 'abc'
+      scope.counter = 0
+
+      scope.$watch(
+        scope => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.$watch(
+            scope => scope.aValue,
+            (newValue, oldValue, scope) => {
+              scope.counter++
+            }
+          )
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+    })
+
+    it('compares based on value if enabled', () => {
+      scope.aValue = [1, 2, 3]
+      scope.counter = 0
+
+      scope.$watch(
+        scope => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.counter++
+        },
+        true
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+
+      scope.aValue.push(4)
+      scope.$digest()
+      expect(scope.counter).toBe(2)
+    })
+
+    it('correctly handles NaNs', () => {
+      scope.number = 0 / 0  // NaN
+      scope.counter = 0
+
+      scope.$watch(
+        scope => scope.number,
+        (newValue, oldValue, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+    })
 
   })
 

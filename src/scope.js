@@ -1,13 +1,21 @@
 function initialValue() {} // represents a non-set watchable
 
 export default class Scope {
-  constructor() {
+  constructor(timeToLive = 10) {
+    this.$$timeToLive = timeToLive
     this.$$watchers = []
+    this.$$lastDirtyWatcher = null
   }
 
-  $watch(watchFn = () => {}, listenerFn = () => {}) {
-    const watcher = { watchFn, listenerFn, lastValue: initialValue }
+  $watch(watchFn = () => {}, listenerFn = () => {}, valueEq = false) {
+    const watcher = {
+      watchFn,
+      listenerFn,
+      valueEq,
+      lastValue: initialValue,
+    }
     this.$$watchers.push(watcher)
+    this.$$lastDirtyWatcher = null
 
     // return function to remove the watcher
     return () => {
@@ -17,33 +25,71 @@ export default class Scope {
   }
 
   $digest() {
+    let ttlCounter = 1
     let stillDirty
+    this.$$lastDirtyWatcher = null
+
     do {
-      stillDirty = this._digestOnce()
+      stillDirty = this.$$digestOnce()
+
+      if (stillDirty && ttlCounter > this.$$timeToLive) {
+        throw {
+          name: 'DigestIterationException',
+          message: `${this.$$timeToLive + 1} digest iterations reached`,
+        }
+      }
+
+      ttlCounter += 1
     }
     while (stillDirty)
   }
 
-  _digestOnce() {
+  $$digestOnce() {
     let newValue
     let oldValue
-    let dirty = false
+    let wasDirty = false
 
-    this.$$watchers.forEach(watcher => {
+    this.$$watchers.every(watcher => {
       newValue = watcher.watchFn(this)
       oldValue = watcher.lastValue
 
-      if (newValue !== oldValue) {  // dirty checking
-        watcher.lastValue = newValue
+      // dirty checking
+      if (!this.$$areEqual(newValue, oldValue, watcher.valueEq)) {
+        this.$$lastDirtyWatcher = watcher
+        watcher.lastValue = watcher.valueEq ?
+                              this.$$deepCopy(newValue) : newValue
         watcher.listenerFn(
           newValue,
           oldValue === initialValue ? newValue : oldValue,
           this
         )
-        dirty = true
+        wasDirty = true
+      } else if (watcher === this.$$lastDirtyWatcher) {
+        return false
       }
+
+      return true
     })
 
-    return dirty
+    return wasDirty
   }
+
+  $$areEqual(newVal, oldVal, valueEq) {
+    if (valueEq) {
+      return JSON.stringify(newVal) === JSON.stringify(oldVal)
+    }
+    return this.$$areNaNEqual(newVal, oldVal) || newVal === oldVal
+  }
+
+  $$areNaNEqual(newVal, oldVal) {
+    return (typeof newVal === 'number' &&
+            typeof oldVal === 'number' &&
+            isNaN(newVal) &&
+            isNaN(oldVal))
+  }
+
+  $$deepCopy(source) {
+    return JSON.parse(JSON.stringify(source))
+  }
+
 }
