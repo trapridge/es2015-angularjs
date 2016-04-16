@@ -3,5 +3,6 @@
   "requireSemicolons": false,
   "disallowSemicolons": true,
   "disallowTrailingWhitespace": false,
-  "requirePaddingNewLinesAfterBlocks": false
+  "requirePaddingNewLinesAfterBlocks": false,
+  "requireParenthesesAroundArrowParam": true
 }
