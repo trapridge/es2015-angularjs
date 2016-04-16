@@ -1,10 +1,43 @@
 function initialValue() {} // represents a non-set watchable
 
 export default class Scope {
+
   constructor(timeToLive = 10) {
     this.$$timeToLive = timeToLive
     this.$$watchers = []
     this.$$lastDirtyWatcher = null
+    this.$$asyncQueue = []
+    this.$$phase = null
+  }
+
+  $apply(expr) {
+    this.$beginPhase('$apply')
+    try {
+      this.$eval(expr)
+    } finally {
+      this.$clearPhase()
+      this.$digest()
+    }
+  }
+
+  $applyAsync() {
+    // page 69
+  }
+
+  $eval(expr, locals) {
+    return expr(this, locals)
+  }
+
+  $evalAsync(expr) {
+    if (!this.$$phase && this.$$asyncQueue.length === 0) {
+      setTimeout(() => {
+        if (this.$$asyncQueue.length > 0) {
+          this.$digest()
+        }
+      }, 0)
+    }
+
+    this.$$asyncQueue.push({ scope: this, expr })
   }
 
   $watch(watchFn = () => {}, listenerFn = () => {}, valueEq = false) {
@@ -17,7 +50,6 @@ export default class Scope {
     this.$$watchers.push(watcher)
     this.$$lastDirtyWatcher = null
 
-    // return function to remove the watcher
     return () => {
       const index = this.$$watchers.indexOf(watcher)
       this.$$watchers.splice(index, 1)
@@ -28,20 +60,32 @@ export default class Scope {
     let ttlCounter = 1
     let stillDirty
     this.$$lastDirtyWatcher = null
+    this.$beginPhase('$digest')
 
     do {
+      this.$$processEvalAsyncQueue()
       stillDirty = this.$$digestOnce()
 
-      if (stillDirty && ttlCounter > this.$$timeToLive) {
+      if ((stillDirty || this.$$asyncQueue.length > 0) &&
+            ttlCounter > this.$$timeToLive) {
+        this.$clearPhase()
         throw {
           name: 'DigestIterationException',
-          message: `${this.$$timeToLive + 1} digest iterations reached`,
+          message: `${this.$$timeToLive} digest iterations exceeded`,
         }
       }
 
       ttlCounter += 1
     }
-    while (stillDirty)
+    while (stillDirty || this.$$asyncQueue.length > 0)
+    this.$clearPhase()
+  }
+
+  $$processEvalAsyncQueue() {
+    while (this.$$asyncQueue.length > 0) {
+      const asyncTask = this.$$asyncQueue.shift()
+      asyncTask.scope.$eval(asyncTask.expr)
+    }
   }
 
   $$digestOnce() {
@@ -49,15 +93,15 @@ export default class Scope {
     let oldValue
     let wasDirty = false
 
-    this.$$watchers.every(watcher => {
+    this.$$watchers.every((watcher) => {
       newValue = watcher.watchFn(this)
       oldValue = watcher.lastValue
 
       // dirty checking
-      if (!this.$$areEqual(newValue, oldValue, watcher.valueEq)) {
+      if (!Scope.$$areEqual(newValue, oldValue, watcher.valueEq)) {
         this.$$lastDirtyWatcher = watcher
         watcher.lastValue = watcher.valueEq ?
-                              this.$$deepCopy(newValue) : newValue
+                              Scope.$$deepCopy(newValue) : newValue
         watcher.listenerFn(
           newValue,
           oldValue === initialValue ? newValue : oldValue,
@@ -74,21 +118,33 @@ export default class Scope {
     return wasDirty
   }
 
-  $$areEqual(newVal, oldVal, valueEq) {
+  $beginPhase(phase) {
+    if (this.$$phase) {
+      throw {
+        name: 'PhaseException',
+        message: `${this.$$phase} already in progress`,
+      }
+    }
+    this.$$phase = phase
+  }
+
+  $clearPhase() {
+    this.$$phase = null
+  }
+
+  static $$areEqual(newVal, oldVal, valueEq) {
     if (valueEq) {
       return JSON.stringify(newVal) === JSON.stringify(oldVal)
     }
-    return this.$$areNaNEqual(newVal, oldVal) || newVal === oldVal
+    return Scope.$$areNaNEqual(newVal, oldVal) || newVal === oldVal
   }
 
-  $$areNaNEqual(newVal, oldVal) {
-    return (typeof newVal === 'number' &&
-            typeof oldVal === 'number' &&
-            isNaN(newVal) &&
-            isNaN(oldVal))
+  static $$areNaNEqual(newVal, oldVal) {
+    return (typeof newVal === 'number' && typeof oldVal === 'number' &&
+            isNaN(newVal) && isNaN(oldVal))
   }
 
-  $$deepCopy(source) {
+  static $$deepCopy(source) {
     return JSON.parse(JSON.stringify(source))
   }
 
