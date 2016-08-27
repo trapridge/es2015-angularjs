@@ -38,16 +38,6 @@ describe('Scope', function () {
 
   describe('$digest', () => {
 
-    it('calls the listener function of a watch on first $digest', () => {
-      let watchFn = () => 'change'
-      let listenerFn = jasmine.createSpy('listenerFn')
-
-      scope.$watch(watchFn, listenerFn)
-      scope.$digest()
-
-      expect(listenerFn).toHaveBeenCalled()
-    })
-
     it('calls the watch function with the scope as the argument', () => {
       let watchFn = jasmine.createSpy('watchFn')
       let listenerFn = () => {}
@@ -56,6 +46,16 @@ describe('Scope', function () {
       scope.$digest()
 
       expect(watchFn).toHaveBeenCalledWith(scope)
+    })
+
+    it('calls the listener function of a watch on first $digest', () => {
+      let watchFn = () => 'change'
+      let listenerFn = jasmine.createSpy('listenerFn')
+
+      scope.$watch(watchFn, listenerFn)
+      scope.$digest()
+
+      expect(listenerFn).toHaveBeenCalled()
     })
 
     it('calls the listener function when the watched value changes', () => {
@@ -94,7 +94,7 @@ describe('Scope', function () {
 
     it('calls listener with new value as old value the first time', () => {
       scope.someValue = 123
-      var oldValueGiven = -1
+      var oldValueGiven
       scope.$watch(
         (scope) => scope.someValue,
         (newValue, oldValue) => { oldValueGiven = oldValue }
@@ -104,14 +104,14 @@ describe('Scope', function () {
     })
 
     it('may have watchers that omit the listener function', () => {
-      var watchFn = jasmine.createSpy('watchFn').and.returnValue('1')
+      var watchFn = jasmine.createSpy('watchFn')
       scope.$watch(watchFn)
       scope.$digest()
       expect(watchFn).toHaveBeenCalled()
     })
 
     it('triggers chained watchers in the same digest', () => {
-      scope.name = 'Jane'
+      scope.name = 'jane'
 
       scope.$watch(
         (scope) => scope.nameUpper,
@@ -134,7 +134,7 @@ describe('Scope', function () {
       scope.$digest()
       expect(scope.initial).toBe('J.')
 
-      scope.name = 'Bob'
+      scope.name = 'bob'
       scope.$digest()
       expect(scope.initial).toBe('B.')
     })
@@ -157,16 +157,15 @@ describe('Scope', function () {
     })
 
     it('ends the digest when the last watch is clean', () => {
-      scope.array = [...Array(100)].map((v, i) => i)
+      scope.array = [...Array(100)].map((_, i) => i)
       let watchExecutions = 0
 
-      scope.array.forEach((v, i) => {
+      scope.array.forEach((_, i) => {
         scope.$watch(
           (scope) => {
             watchExecutions += 1
             return scope.array[i]
-          },
-          (newValue, oldValue, scope) => { }
+          }
         )
       })
 
@@ -236,18 +235,45 @@ describe('Scope', function () {
       expect(scope.counter).toBe(1)
     })
 
-    it('eventually halts $evalAsyncs added by watches', () => {
-      scope.aValue = [1, 2, 3]
+    it('catches exceptions in watch functions and continues', () => {
+      scope.aValue = 'a'
+      scope.counter = 0
 
       scope.$watch(
-        (scope) => {
-          scope.$evalAsync((scope) => { })
-          return scope.aValue
-        },
-        (newValue, oldValue, scope) => { }
+        (scope) => { throw 'Error' }
       )
 
-      expect(() => { scope.$digest() }).toThrow()
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+    })
+
+    it('catches exceptions in listener functions and continues', () => {
+      scope.aValue = 'a'
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          throw 'Error'
+        }
+      )
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
     })
 
     it('schedules a digest in $evalAsync', (done) => {
@@ -267,6 +293,20 @@ describe('Scope', function () {
         expect(scope.counter).toBe(1)
         done()
       }, 50)
+    })
+
+    it('eventually halts $evalAsyncs added by watches', () => {
+      scope.aValue = [1, 2, 3]
+
+      scope.$watch(
+        (scope) => {
+          scope.$evalAsync((scope) => { })
+          return scope.aValue
+        },
+        (newValue, oldValue, scope) => { }
+      )
+
+      expect(() => { scope.$digest() }).toThrow()
     })
 
     describe('$evalAsync', () => {
@@ -319,8 +359,7 @@ describe('Scope', function () {
               scope.$evalAsync((scope) => { scope.asyncEvaluatedTimes++ })
             }
             return scope.aValue
-          },
-          (newValue, oldValue, scope) => { }
+          }
         )
 
         scope.$digest()
@@ -367,7 +406,7 @@ describe('Scope', function () {
       scope.$apply(
         (scope) => { scope.aValue = 'someOtherValue' }
       )
-      expect(scope.counter).toBe(2) // spy rather
+      expect(scope.counter).toBe(2)
     })
 
     it('allows async $apply with $applyAsync', (done) => {
@@ -389,6 +428,57 @@ describe('Scope', function () {
       }, 50)
     })
 
+    it('never executes $applyAsynced function in the same cycle', (done) => {
+      scope.aValue = [1, 2, 3]
+      scope.asyncApplied = false
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => { 
+          scope.$applyAsync((scope) => {
+            scope.asyncApplied = true 
+          })
+        }
+      )
+
+      scope.$digest()
+      expect(scope.asyncApplied).toBe(false)
+      setTimeout(() => {
+        expect(scope.asyncApplied).toBe(true)
+        done()
+      }, 50)
+
+    })
+
+    it('coalesces many calls to $applyAsync', (done) => {
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => {
+          scope.counter++
+          return scope.aValue
+        }
+      )
+
+      scope.$applyAsync((scope) => {
+        scope.aValue = 'abc'
+      })
+
+      scope.$applyAsync((scope) => {
+        scope.aValue = 'def'
+      })
+
+      setTimeout(() => {
+        expect(scope.counter).toBe(2)
+        done()
+      }, 50)
+    })
+
+    it('cancels and flushes $applyAsync if digested first', (done) => {
+      expect(false).toBe(true, 'Continue on page 77')
+      done()
+    })
+
   })
 
   describe('$watch', () => {
@@ -396,11 +486,87 @@ describe('Scope', function () {
     it('returns a function with which to remove the watcher', () => {
       expect(scope.$$watchers.length).toBe(0)
 
-      const removeFn = scope.$watch(() => {}, () => {})
+      const removeFn = scope.$watch()
       expect(scope.$$watchers.length).toBe(1)
 
       removeFn()
       expect(scope.$$watchers.length).toBe(0)
+    })
+
+    it('allows destroying a $watch during digest', () => {
+      scope.aValue = 'abc'
+      const watchCalls = []
+
+      scope.$watch(
+        (scope) => { 
+          watchCalls.push('first')
+          return scope.aValue
+        }
+      )
+
+      var destroyWatch = scope.$watch(
+        (scope) => {
+          watchCalls.push('second')
+          destroyWatch()
+        }
+      )
+
+      scope.$watch(
+        (scope) => {
+          watchCalls.push('third')
+          return scope.aValue
+        }
+      )
+      
+      scope.$digest()
+      expect(watchCalls).toEqual(['first', 'second', 'third', 'first', 'third'])
+    })
+
+    it('allows a $watch to destroy another during digest', () => {
+      scope.aValue = 'abc'
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          removeWatch()
+        }
+      )
+
+      const removeWatch = scope.$watch()
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+    })
+
+    it('allows destroying several $watches during digest', () => {
+      scope.aValue = 'abc'
+      scope.counter = 0
+
+      const removeWatch = scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          removeWatch()
+          removeWatch2()
+        }
+      )
+
+      const removeWatch2 = scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toBe(0)
     })
 
   })
