@@ -367,6 +367,24 @@ describe('Scope', function () {
         expect(scope.asyncEvaluatedTimes).toBe(2)
       })
 
+      it('handles exceptions', (done) => {
+        scope.value = 'a'
+        scope.counter = 0
+
+        scope.$watch(
+          (scope) => scope.value, 
+          (newValue, oldValue, scope) => { scope.counter++ }
+        )
+
+        scope.$evalAsync((scope) => { throw 'Error' })
+
+        setTimeout(() => {
+          expect(scope.counter).toBe(1)
+          done()
+        }, 50)
+
+      })
+
     })
 
   })
@@ -475,8 +493,51 @@ describe('Scope', function () {
     })
 
     it('cancels and flushes $applyAsync if digested first', (done) => {
-      expect(false).toBe(true, 'Continue on page 77')
-      done()
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => {
+          scope.counter++
+          return scope.aValue
+        }
+      )
+
+      scope.$applyAsync((scope) => {
+        scope.aValue = 'abc'
+      })
+
+      scope.$applyAsync((scope) => {
+        scope.aValue = 'def'
+      })
+
+      scope.$digest()
+      expect(scope.counter).toBe(2)
+      expect(scope.aValue).toBe('def')
+
+      setTimeout(() => {
+        expect(scope.counter).toBe(2)
+        done()
+      }, 50)
+
+    })
+
+    it('$applyAsync handles exceptions', (done) => {
+      scope.$applyAsync((scope) => {
+        throw 'Error'  
+      })
+
+      scope.$applyAsync((scope) => {
+        throw 'Error'  
+      })
+
+      scope.$applyAsync((scope) => {
+        scope.applied = true  
+      })
+
+      setTimeout(() => {
+        expect(scope.applied).toBe(true)
+        done()
+      }, 50)
     })
 
   })
@@ -569,6 +630,68 @@ describe('Scope', function () {
       expect(scope.counter).toBe(0)
     })
 
+  })
+
+  describe('$$postWatch', () => {
+
+    it('runs once after next digest', () => {
+      scope.counter = 0
+
+      scope.$$postDigest(() => {
+        scope.counter++
+      })
+
+      expect(scope.counter).toBe(0)
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+
+      scope.$digest()
+      expect(scope.counter).toBe(1)
+    })
+
+    it('is not included in the digest', () => {
+      scope.value = 'original'
+
+      scope.$$postDigest(() => {
+        scope.value = 'changed'
+      })
+
+      scope.$watch(
+        (scope) => scope.value,
+        (newValue, oldValue, scope) => {
+          scope.watchedValue = newValue
+        }
+      )
+
+      scope.$digest()
+      expect(scope.watchedValue).toBe('original')
+
+      scope.$digest()
+      expect(scope.watchedValue).toBe('changed')
+    })
+
+    it('handles expections', () => {
+      let didRun = false
+
+      scope.$$postDigest(() => {
+        throw 'Error'
+      })
+
+      scope.$$postDigest(() => {
+        didRun = true
+      })
+
+      scope.$digest()
+      expect(didRun).toBe(true)
+    })
+
+  })
+
+  describe('$watchGroup', () => {
+    it('should continue', () => {
+      expect(true).toBe(false, 'on page 84')
+    })
   })
 
 })

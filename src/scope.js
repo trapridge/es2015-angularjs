@@ -11,6 +11,7 @@ export default class Scope {
     this.$$applyAsyncQueue = []
     this.$$applyAsyncId = null
     this.$$phase = null
+    this.$$postDigestQueue = []
   }
 
   $apply(expr) {
@@ -28,14 +29,20 @@ export default class Scope {
     this.$$applyAsyncQueue.push(() => { this.$eval(expr) })
     if (this.$$applyAsyncId === null) {
       this.$$applyAsyncId = setTimeout(() => {
-        this.$apply(() => {
-          while (this.$$applyAsyncQueue.length) {
-            this.$$applyAsyncQueue.shift()()   
-          }
-          this.$$applyAsyncId = null
-        })
+        this.$apply(this.$$flushApplyAsyncQueue.bind(this))
       }, 0)
     }
+  }
+
+  $$flushApplyAsyncQueue() {
+    while (this.$$applyAsyncQueue.length) {
+      try {
+        this.$$applyAsyncQueue.shift()()   
+      } catch (e) {
+        // console.error(e)
+      }
+    }
+    this.$$applyAsyncId = null
   }
 
   $eval(expr, locals) {
@@ -80,6 +87,11 @@ export default class Scope {
     this.$$lastDirtyWatcher = null
     this.$beginPhase('$digest')
 
+    if (this.$$applyAsyncId) {
+      clearTimeout(this.$$applyAsyncId)
+      this.$$flushApplyAsyncQueue()
+    }
+
     do {
       this.$$processEvalAsyncQueue()
       stillDirty = this.$$digestOnce()
@@ -97,12 +109,27 @@ export default class Scope {
     }
     while (stillDirty || this.$$asyncQueue.length > 0)
     this.$clearPhase()
+    this.$$flushPostDigestQueue()
+  }
+
+  $$flushPostDigestQueue() {
+    while (this.$$postDigestQueue.length) {
+      try {
+        this.$$postDigestQueue.shift()()
+      } catch (e) {
+        // console.error(e)
+      }
+    }
   }
 
   $$processEvalAsyncQueue() {
-    while (this.$$asyncQueue.length > 0) {
+    while (this.$$asyncQueue.length) {
       const asyncTask = this.$$asyncQueue.shift()
-      asyncTask.scope.$eval(asyncTask.expr)
+      try {
+        asyncTask.scope.$eval(asyncTask.expr)
+      } catch (e) {
+        // console.error(e)
+      }
     }
   }
 
@@ -153,6 +180,10 @@ export default class Scope {
 
   $clearPhase() {
     this.$$phase = null
+  }
+
+  $$postDigest(fn) {
+    this.$$postDigestQueue.push(fn)
   }
 
   static $$areEqual(newVal, oldVal, valueEq) {
