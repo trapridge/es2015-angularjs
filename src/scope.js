@@ -7,7 +7,7 @@ export default class Scope {
     this.$$timeToLive = timeToLive
     this.$$watchers = []
     this.$$lastDirtyWatcher = null
-    this.$$asyncQueue = []
+    this.$$evalAsyncQueue = []
     this.$$applyAsyncQueue = []
     this.$$applyAsyncId = null
     this.$$phase = null
@@ -51,15 +51,64 @@ export default class Scope {
 
   // attempts to schedule invocation in ongoing digest cycle 
   $evalAsync(expr) {
-    if (!this.$$phase && this.$$asyncQueue.length === 0) {
+    if (!this.$$phase && this.$$evalAsyncQueue.length === 0) {
       setTimeout(() => {
-        if (this.$$asyncQueue.length > 0) {
+        if (this.$$evalAsyncQueue.length > 0) {
           this.$digest()
         }
       }, 0)
     }
 
-    this.$$asyncQueue.push({ scope: this, expr })
+    this.$$evalAsyncQueue.push({ scope: this, expr })
+  }
+
+  $watchGroup(watchFns = [], listenerFn = noop) {
+    const oldValues = new Array(watchFns.length)
+    const newValues = new Array(watchFns.length)
+    let changeReactionScheduled = false
+    let firstRun = true
+
+    // listener is called once even if no watches in group
+    if (!watchFns.length) {
+      var shouldCall = true
+      this.$evalAsync(() => {
+        if (shouldCall) {
+          listenerFn(newValues, oldValues, this)
+        }
+      })
+      return () => {
+        shouldCall = false
+      }
+    }
+
+    const callWatchGroupListener = () => {
+      if (firstRun) {
+        firstRun = false
+        listenerFn(newValues, newValues, this)
+      } else {
+        listenerFn(newValues, oldValues, this)
+      }
+      changeReactionScheduled = false
+    }
+
+    // jscs:disable requireShorthandArrowFunctions
+    let removeFns = watchFns.map((watchFn, i) => {
+      return this.$watch(watchFn, (newValue, oldValue) => {
+        newValues[i] = newValue
+        oldValues[i] = oldValue
+        if (!changeReactionScheduled) {
+          changeReactionScheduled = true
+          this.$evalAsync(callWatchGroupListener)
+        }
+      })
+    })
+    // jscs: enable requireShorthandArrowFunctions
+
+    return () => {
+      removeFns.forEach((removeFn) => {
+        removeFn()
+      })
+    }
   }
 
   $watch(watchFn = noop, listenerFn = noop, valueEq = false) {
@@ -96,7 +145,7 @@ export default class Scope {
       this.$$processEvalAsyncQueue()
       stillDirty = this.$$digestOnce()
 
-      if ((stillDirty || this.$$asyncQueue.length > 0) &&
+      if ((stillDirty || this.$$evalAsyncQueue.length > 0) &&
             ttlCounter > this.$$timeToLive) {
         this.$clearPhase()
         throw {
@@ -107,7 +156,7 @@ export default class Scope {
 
       ttlCounter += 1
     }
-    while (stillDirty || this.$$asyncQueue.length > 0)
+    while (stillDirty || this.$$evalAsyncQueue.length > 0)
     this.$clearPhase()
     this.$$flushPostDigestQueue()
   }
@@ -123,8 +172,8 @@ export default class Scope {
   }
 
   $$processEvalAsyncQueue() {
-    while (this.$$asyncQueue.length) {
-      const asyncTask = this.$$asyncQueue.shift()
+    while (this.$$evalAsyncQueue.length) {
+      const asyncTask = this.$$evalAsyncQueue.shift()
       try {
         asyncTask.scope.$eval(asyncTask.expr)
       } catch (e) {

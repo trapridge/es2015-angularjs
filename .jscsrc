@@ -4,5 +4,6 @@
   "disallowSemicolons": true,
   "disallowTrailingWhitespace": false,
   "requirePaddingNewLinesAfterBlocks": false,
-  "requireParenthesesAroundArrowParam": true
+  "requireParenthesesAroundArrowParam": true,
+  "requirePaddingNewLinesBeforeLineComments": false
 }

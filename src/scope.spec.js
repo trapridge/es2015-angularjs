@@ -689,9 +689,143 @@ describe('Scope', function () {
   })
 
   describe('$watchGroup', () => {
-    it('should continue', () => {
-      expect(true).toBe(false, 'on page 84')
+
+    it('takes watches as and array and call listener with arrays', () => {
+      let newVals
+      let oldVals
+      scope.values = [1, 2, 3]
+
+      scope.$watchGroup([
+          (scope) => scope.values[0],
+          (scope) => scope.values[1],
+          (scope) => scope.values[2],
+        ],
+        (newValues, oldValues, scope) => {
+          newVals = newValues
+          oldVals = oldValues
+        }
+      )
+
+      scope.$digest()
+      expect(scope.values).toEqual(newVals)
+      expect(scope.values).toEqual(oldVals)
     })
+
+    it('calls listener only once per digest', () => {
+      scope.values = [1, 2]
+      scope.counter = 0
+
+      scope.$watchGroup([
+          (scope) => scope.values[0],
+          (scope) => scope.values[1],
+        ],
+        (newValues, oldValues, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      expect(scope.counter).toEqual(1)
+    })
+
+    it('uses the same array of new and old values on the first run', () => {
+      let gotNewValues
+      let gotOldValues
+
+      scope.aValue = 1
+      scope.anotherValue = 2
+
+      scope.$watchGroup([
+          (scope) => scope.aValue,
+          (scope) => scope.anotherValue,
+        ],
+        (newValues, oldValues, scope) => {
+          gotNewValues = newValues
+          gotOldValues = oldValues
+        }
+      )
+
+      scope.$digest()
+      expect(gotOldValues).toBe(gotNewValues)
+    })
+
+    it('uses different arrays of new and old values on subsequent runs', () => {
+      let gotNewValues
+      let gotOldValues
+
+      scope.aValue = 1
+      scope.anotherValue = 2
+
+      scope.$watchGroup([
+          (scope) => scope.aValue,
+          (scope) => scope.anotherValue,
+        ],
+        (newValues, oldValues, scope) => {
+          gotNewValues = newValues
+          gotOldValues = oldValues
+        }
+      )
+
+      scope.$digest()
+
+      scope.anotherValue = 3
+      scope.$digest()
+
+      expect(gotNewValues).toEqual([1, 3])
+      expect(gotOldValues).toEqual([1, 2])
+    })
+
+    it('calls the listener once when the watch array is empty', () => {
+      scope.counter = 0
+
+      scope.$watchGroup([],
+        (newValues, oldValues, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      
+      expect(scope.counter).toEqual(1)
+    })
+
+    it('can be deregistered', () => {
+      scope.aValue = 'a'
+      scope.anotherValue = 'b'
+      scope.counter = 0
+
+      const remove = scope.$watchGroup([
+          (scope) => scope.aValue,
+          (scope) => scope.anotherValue,
+        ],
+        (newValues, oldValues, scope) => {
+          scope.counter++
+        }
+      )
+
+      scope.$digest()
+      
+      remove()
+      scope.$digest()
+
+      expect(scope.counter).toEqual(1)
+    })
+
+    it('does not call zero-watch listener when deregistered first ', () => {
+      scope.counter = 0
+
+      const remove = scope.$watchGroup([],
+        (newValues, oldValues, scope) => {
+          scope.counter++
+        }
+      )
+      
+      remove()
+      scope.$digest()
+
+      expect(scope.counter).toEqual(0)
+    })
+
   })
 
 })
