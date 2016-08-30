@@ -14,18 +14,22 @@ export default class Scope {
     this.$$postDigestQueue = []
   }
 
+  $new() {
+    return Object.create(this)
+  }
+
   $apply(expr) {
-    this.$beginPhase('$apply')
+    this.$$beginPhase('$apply')
     try {
       this.$eval(expr)
     } finally {
-      this.$clearPhase()
+      this.$$clearPhase()
       this.$digest()
     }
   }
 
-  // always defers the invocation to future digest cycle
   $applyAsync(expr) {
+    // always defers the invocation to future digest cycle
     this.$$applyAsyncQueue.push(() => { this.$eval(expr) })
     if (this.$$applyAsyncId === null) {
       this.$$applyAsyncId = setTimeout(() => {
@@ -34,23 +38,12 @@ export default class Scope {
     }
   }
 
-  $$flushApplyAsyncQueue() {
-    while (this.$$applyAsyncQueue.length) {
-      try {
-        this.$$applyAsyncQueue.shift()()   
-      } catch (e) {
-        // console.error(e)
-      }
-    }
-    this.$$applyAsyncId = null
-  }
-
   $eval(expr, locals) {
     return expr(this, locals)
   }
 
-  // attempts to schedule invocation in ongoing digest cycle 
   $evalAsync(expr) {
+    // attempts to schedule invocation in ongoing digest cycle 
     if (!this.$$phase && this.$$evalAsyncQueue.length === 0) {
       setTimeout(() => {
         if (this.$$evalAsyncQueue.length > 0) {
@@ -134,7 +127,7 @@ export default class Scope {
     let ttlCounter = 1
     let stillDirty
     this.$$lastDirtyWatcher = null
-    this.$beginPhase('$digest')
+    this.$$beginPhase('$digest')
 
     if (this.$$applyAsyncId) {
       clearTimeout(this.$$applyAsyncId)
@@ -142,12 +135,12 @@ export default class Scope {
     }
 
     do {
-      this.$$processEvalAsyncQueue()
+      this.$$flushEvalAsyncQueue()
       stillDirty = this.$$digestOnce()
 
       if ((stillDirty || this.$$evalAsyncQueue.length > 0) &&
             ttlCounter > this.$$timeToLive) {
-        this.$clearPhase()
+        this.$$clearPhase()
         throw {
           name: 'DigestIterationException',
           message: `${this.$$timeToLive} digest iterations exceeded`,
@@ -157,8 +150,30 @@ export default class Scope {
       ttlCounter += 1
     }
     while (stillDirty || this.$$evalAsyncQueue.length > 0)
-    this.$clearPhase()
+    this.$$clearPhase()
     this.$$flushPostDigestQueue()
+  }
+
+  $$flushApplyAsyncQueue() {
+    while (this.$$applyAsyncQueue.length) {
+      try {
+        this.$$applyAsyncQueue.shift()()   
+      } catch (e) {
+        Scope.$$logError(e)
+      }
+    }
+    this.$$applyAsyncId = null
+  }
+
+  $$flushEvalAsyncQueue() {
+    while (this.$$evalAsyncQueue.length) {
+      const asyncTask = this.$$evalAsyncQueue.shift()
+      try {
+        asyncTask.scope.$eval(asyncTask.expr)
+      } catch (e) {
+        Scope.$$logError(e)
+      }
+    }
   }
 
   $$flushPostDigestQueue() {
@@ -166,18 +181,7 @@ export default class Scope {
       try {
         this.$$postDigestQueue.shift()()
       } catch (e) {
-        // console.error(e)
-      }
-    }
-  }
-
-  $$processEvalAsyncQueue() {
-    while (this.$$evalAsyncQueue.length) {
-      const asyncTask = this.$$evalAsyncQueue.shift()
-      try {
-        asyncTask.scope.$eval(asyncTask.expr)
-      } catch (e) {
-        // console.error(e)
+        Scope.$$logError(e)
       }
     }
   }
@@ -210,14 +214,14 @@ export default class Scope {
             return false
           }
         } catch (e) {
-          // console.error(e)
+          Scope.$$logError(e)
         }
       }    
     }
     return wasDirty
   }
 
-  $beginPhase(phase) {
+  $$beginPhase(phase) {
     if (this.$$phase) {
       throw {
         name: 'PhaseException',
@@ -227,7 +231,7 @@ export default class Scope {
     this.$$phase = phase
   }
 
-  $clearPhase() {
+  $$clearPhase() {
     this.$$phase = null
   }
 
@@ -249,6 +253,10 @@ export default class Scope {
 
   static $$deepCopy(source) {
     return JSON.parse(JSON.stringify(source))
+  }
+
+  static $$logError(message) {
+    // console.error(message)
   }
 
 }

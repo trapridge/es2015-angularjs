@@ -309,98 +309,78 @@ describe('Scope', function () {
       expect(() => { scope.$digest() }).toThrow()
     })
 
-    describe('$evalAsync', () => {
+    it('executes $evalAsync\'ed function later in the same cycle', () => {
+      scope.aValue = [1, 2, 3]
+      scope.asyncEvaluated = false
+      scope.asyncEvaluatedImmediately = false
 
-      it('executes $evalAsync\'ed function later in the same cycle', () => {
-        scope.aValue = [1, 2, 3]
-        scope.asyncEvaluated = false
-        scope.asyncEvaluatedImmediately = false
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.$evalAsync((scope) => { scope.asyncEvaluated = true })
+          scope.asyncEvaluatedImmediately = scope.asyncEvaluated
+        }
+      )
 
-        scope.$watch(
-          (scope) => scope.aValue,
-          (newValue, oldValue, scope) => {
+      scope.$digest()
+
+      expect(scope.asyncEvaluated).toBe(true)
+      expect(scope.asyncEvaluatedImmediately).toBe(false)
+    })
+
+    it('executes $evalAsync\'ed functions added by watch functions', () => {
+      scope.aValue = [1, 2, 3]
+      scope.asyncEvaluated = false
+
+      scope.$watch(
+        (scope) => {
+          if (!scope.asyncEvaluated) {
             scope.$evalAsync((scope) => { scope.asyncEvaluated = true })
-            scope.asyncEvaluatedImmediately = scope.asyncEvaluated
           }
-        )
+          return scope.aValue
+        },
+        (newValue, oldValue, scope) => { }
+      )
 
-        scope.$digest()
+      scope.$digest()
 
-        expect(scope.asyncEvaluated).toBe(true)
-        expect(scope.asyncEvaluatedImmediately).toBe(false)
-      })
-
-      it('executes $evalAsync\'ed functions added by watch functions', () => {
-        scope.aValue = [1, 2, 3]
-        scope.asyncEvaluated = false
-
-        scope.$watch(
-          (scope) => {
-            if (!scope.asyncEvaluated) {
-              scope.$evalAsync((scope) => { scope.asyncEvaluated = true })
-            }
-            return scope.aValue
-          },
-          (newValue, oldValue, scope) => { }
-        )
-
-        scope.$digest()
-
-        expect(scope.asyncEvaluated).toBe(true)
-      })
-
-      it('executes $evalAsync\'ed functions even when not dirty', () => {
-        scope.aValue = [1, 2, 3]
-        scope.asyncEvaluatedTimes = 0
-
-        scope.$watch(
-          (scope) => {
-            if (scope.asyncEvaluatedTimes < 2) {
-              scope.$evalAsync((scope) => { scope.asyncEvaluatedTimes++ })
-            }
-            return scope.aValue
-          }
-        )
-
-        scope.$digest()
-
-        expect(scope.asyncEvaluatedTimes).toBe(2)
-      })
-
-      it('handles exceptions', (done) => {
-        scope.value = 'a'
-        scope.counter = 0
-
-        scope.$watch(
-          (scope) => scope.value, 
-          (newValue, oldValue, scope) => { scope.counter++ }
-        )
-
-        scope.$evalAsync((scope) => { throw 'Error' })
-
-        setTimeout(() => {
-          expect(scope.counter).toBe(1)
-          done()
-        }, 50)
-
-      })
-
+      expect(scope.asyncEvaluated).toBe(true)
     })
 
-  })
+    it('executes $evalAsync\'ed functions even when not dirty', () => {
+      scope.aValue = [1, 2, 3]
+      scope.asyncEvaluatedTimes = 0
 
-  describe('$eval', () => {
+      scope.$watch(
+        (scope) => {
+          if (scope.asyncEvaluatedTimes < 2) {
+            scope.$evalAsync((scope) => { scope.asyncEvaluatedTimes++ })
+          }
+          return scope.aValue
+        }
+      )
 
-    it('executes $eval\'ed function and returns result', () => {
-      scope.aValue = 42
-      var result = scope.$eval((scope) => scope.aValue)
-      expect(result).toBe(42)
+      scope.$digest()
+
+      expect(scope.asyncEvaluatedTimes).toBe(2)
     })
 
-    it('passes the second $eval argument straight through', () => {
-      scope.aValue = 42
-      var result = scope.$eval((scope, arg) => scope.aValue + arg, 2)
-      expect(result).toBe(44)
+    it('handles exceptions thrown in $evalAsync\'ed functions', (done) => {
+      scope.value = 'a'
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => scope.value, 
+        (newValue, oldValue, scope) => { scope.counter++ }
+      )
+
+      scope.$evalAsync((scope) => { throw 'Error' })
+
+      setTimeout(() => {
+        expect(scope.counter).toBe(1)
+        done()
+      }, 50)
+
     })
 
   })
@@ -542,6 +522,22 @@ describe('Scope', function () {
 
   })
 
+  describe('$eval', () => {
+
+    it('executes $eval\'ed function and returns result', () => {
+      scope.aValue = 42
+      var result = scope.$eval((scope) => scope.aValue)
+      expect(result).toBe(42)
+    })
+
+    it('passes the second $eval argument straight through', () => {
+      scope.aValue = 42
+      var result = scope.$eval((scope, arg) => scope.aValue + arg, 2)
+      expect(result).toBe(44)
+    })
+
+  })
+
   describe('$watch', () => {
 
     it('returns a function with which to remove the watcher', () => {
@@ -580,7 +576,9 @@ describe('Scope', function () {
       )
       
       scope.$digest()
-      expect(watchCalls).toEqual(['first', 'second', 'third', 'first', 'third'])
+      expect(watchCalls).toEqual([
+        'first', 'second', 'third', 'first', 'third',
+      ])
     })
 
     it('allows a $watch to destroy another during digest', () => {
@@ -749,7 +747,7 @@ describe('Scope', function () {
       expect(gotOldValues).toBe(gotNewValues)
     })
 
-    it('uses different arrays of new and old values on subsequent runs', () => {
+    it('uses different arrays of new and old values on subseq runs', () => {
       let gotNewValues
       let gotOldValues
 
@@ -824,6 +822,85 @@ describe('Scope', function () {
       scope.$digest()
 
       expect(scope.counter).toEqual(0)
+    })
+
+  })
+
+  describe('inheritance', () => {
+
+    it('inherits the parent\'s properties', () => {
+      scope.aValue = [1, 2, 3]
+      const child = scope.$new()
+
+      expect(child.aValue).toEqual([1, 2, 3])
+    })
+
+    it('does not cause a parent to inherit its properties', () => {
+      const child = scope.$new()
+      child.aValue = [1, 2, 3]
+
+      expect(scope.aValue).toBeUndefined()
+    })
+
+    it('inherits the parents properties whenever they are defined', () => {
+      const child = scope.$new()
+      scope.aValue = [1, 2, 3]
+
+      expect(child.aValue).toEqual([1, 2, 3])
+    })
+    
+    it('can manipulate a parent scope\'s property', () => {
+      scope.aValue = [1, 2, 3]
+      const child = scope.$new()
+      child.aValue.push(4)
+
+      expect(scope.aValue).toEqual([1, 2, 3, 4])
+      expect(child.aValue).toEqual([1, 2, 3, 4])
+    })
+
+    it('can watch a property in the parent', () => {
+      const child = scope.$new()
+      scope.aValue = [1, 2, 3]
+      child.counter = 0
+
+      child.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => { scope.counter++ },
+        true
+      ) 
+
+      child.$digest()
+
+      expect(child.counter).toBe(1)
+
+      scope.aValue.push(4)
+      child.$digest()
+
+      expect(child.counter).toBe(2)
+    })
+
+    it('can be nested at any depth', () => {
+      var a   = new Scope()
+      var aa  = a.$new()
+      var aaa = aa.$new()
+      var aab = aa.$new()
+      var ab  = a.$new()
+      var abb = ab.$new()
+
+      a.value = 1
+
+      expect(aa.value).toBe(1)
+      expect(aaa.value).toBe(1)
+      expect(aab.value).toBe(1)
+      expect(ab.value).toBe(1)
+      expect(abb.value).toBe(1)
+
+      ab.anotherValue = 2
+
+      expect(abb.anotherValue).toBe(2)
+      expect(a.anotherValue).toBeUndefined()
+      expect(aa.anotherValue).toBeUndefined()
+      expect(aaa.anotherValue).toBeUndefined()
     })
 
   })
