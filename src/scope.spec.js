@@ -880,12 +880,12 @@ describe('Scope', function () {
     })
 
     it('can be nested at any depth', () => {
-      var a   = new Scope()
-      var aa  = a.$new()
-      var aaa = aa.$new()
-      var aab = aa.$new()
-      var ab  = a.$new()
-      var abb = ab.$new()
+      const a   = new Scope()
+      const aa  = a.$new()
+      const aaa = aa.$new()
+      const aab = aa.$new()
+      const ab  = a.$new()
+      const abb = ab.$new()
 
       a.value = 1
 
@@ -903,6 +903,73 @@ describe('Scope', function () {
       expect(aaa.anotherValue).toBeUndefined()
     })
 
+    it('shadows a parent\'s property with the same name', () => {
+      const child  = scope.$new()
+
+      scope.name = 'jim'
+      child.name = 'jill'
+
+      expect(scope.name).toBe('jim')
+      expect(child.name).toBe('jill')
+    })
+
+    it('does not shadow members of parent scope\'s attributes', () => {
+      const child  = scope.$new()
+
+      // the dot rule
+      scope.user = { name: 'jim' }
+      child.user.name = 'jill'
+
+      expect(scope.user.name).toBe('jill')
+      expect(child.user.name).toBe('jill')
+    })
+
+    it('does not digest its parent(s)', () => {
+      const child = scope.$new()
+      
+      scope.value = 'a'
+      scope.$watch(
+        (scope) => scope.value,
+        (newValue, oldValue, scope) => {
+          scope.valueWas = newValue
+        }
+      )
+
+      child.$digest()
+
+      expect(child.valueWas).toBeUndefined()
+    })
+
+    it('keeps a record of its children', () => {
+      const child1 = scope.$new()
+      const child2 = scope.$new()
+      const child1a = child1.$new()
+
+      expect(scope.$$children.length).toBe(2)
+      expect(child1.$$children.length).toBe(1)
+      expect(child2.$$children.length).toBe(0)
+      expect(child1a.$$children.length).toBe(0)
+
+      expect(scope.$$children[0]).toBe(child1)
+      expect(scope.$$children[1]).toBe(child2)
+      expect(child1.$$children[0]).toBe(child1a)
+    })
+
+    it('digests its children', () => {
+      const child = scope.$new()
+      scope.aValue = 'a'
+
+      child.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => {
+          scope.gotNewValue = newValue
+        }
+      )
+
+      scope.$digest()
+
+      expect(scope.gotNewValue).toBe('a', 'page 103')
+    })
   })
 
 })

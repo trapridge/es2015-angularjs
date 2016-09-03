@@ -12,10 +12,15 @@ export default class Scope {
     this.$$applyAsyncId = null
     this.$$phase = null
     this.$$postDigestQueue = []
+    this.$$children = []
   }
 
   $new() {
-    return Object.create(this)
+    const childScope = Object.create(this)
+    childScope.$$watchers = []
+    childScope.$$children = []
+    this.$$children.push(childScope)
+    return childScope
   }
 
   $apply(expr) {
