@@ -13,13 +13,21 @@ export default class Scope {
     this.$$phase = null
     this.$$postDigestQueue = []
     this.$$children = []
+    this.$$root = this
   }
 
-  $new() {
-    const childScope = Object.create(this)
+  $new(isolated = false) {
+    let childScope
+    if (isolated) {
+      childScope = new Scope()
+    } else {
+      childScope = Object.create(this)  // with prototype
+    }
+
     childScope.$$watchers = []
     childScope.$$children = []
     this.$$children.push(childScope)
+    
     return childScope
   }
 
@@ -29,7 +37,7 @@ export default class Scope {
       this.$eval(expr)
     } finally {
       this.$$clearPhase()
-      this.$digest()
+      this.$$root.$digest()
     }
   }
 
@@ -52,7 +60,7 @@ export default class Scope {
     if (!this.$$phase && this.$$evalAsyncQueue.length === 0) {
       setTimeout(() => {
         if (this.$$evalAsyncQueue.length > 0) {
-          this.$digest()
+          this.$$root.$digest()
         }
       }, 0)
     }
@@ -117,13 +125,13 @@ export default class Scope {
       lastValue: initialValue,
     }
     this.$$watchers.unshift(watcher)
-    this.$$lastDirtyWatcher = null
+    this.$$root.$$lastDirtyWatcher = null
 
     return () => {
       const index = this.$$watchers.indexOf(watcher)
       if (index > -1) {
         this.$$watchers.splice(index, 1)
-        this.$$lastDirtyWatcher = null
+        this.$$root.$$lastDirtyWatcher = null
       }
     }
   }
@@ -131,7 +139,7 @@ export default class Scope {
   $digest() {
     let ttlCounter = 1
     let stillDirty
-    this.$$lastDirtyWatcher = null
+    this.$$root.$$lastDirtyWatcher = null
     this.$$beginPhase('$digest')
 
     if (this.$$applyAsyncId) {
@@ -192,38 +200,48 @@ export default class Scope {
   }
 
   $$digestOnce() {
-    let newValue
-    let oldValue
     let wasDirty = false
+    let continueLoop = true
 
-    for (let i = this.$$watchers.length - 1; i >= 0; i--) {
-      const watcher = this.$$watchers[i]
-      if (watcher) {
-        try {
-          newValue = watcher.watchFn(this)
-          oldValue = watcher.lastValue
+    this.$$everyScope((scope) => {
+      let newValue
+      let oldValue
+      for (let i = scope.$$watchers.length - 1; i >= 0; i--) {
+        const watcher = scope.$$watchers[i]
+        if (watcher) {
+          try {
+            newValue = watcher.watchFn(scope)
+            oldValue = watcher.lastValue
 
-          // dirty checking
-          if (!Scope.$$areEqual(newValue, oldValue, watcher.valueEq)) {
-            this.$$lastDirtyWatcher = watcher
-            watcher.lastValue = watcher.valueEq ?
-                                  Scope.$$deepCopy(newValue) : newValue
-            watcher.listenerFn(
-              newValue,
-              oldValue === initialValue ? newValue : oldValue,
-              this
-            )
-            wasDirty = true
-          } else if (watcher === this.$$lastDirtyWatcher) {
-            // short-circuit out as rest of the watches are clean
-            return false
+            // dirty checking
+            if (!Scope.$$areEqual(newValue, oldValue, watcher.valueEq)) {
+              this.$$root.$$lastDirtyWatcher = watcher
+              watcher.lastValue = watcher.valueEq ?
+                                    Scope.$$deepCopy(newValue) : newValue
+              watcher.listenerFn(
+                newValue,
+                oldValue === initialValue ? newValue : oldValue,
+                scope
+              )
+              wasDirty = true
+            } else if (watcher === this.$$root.$$lastDirtyWatcher) {
+              // short-circuit out as rest of the watches are clean
+              continueLoop = false
+              return false
+            }
+          } catch (e) {
+            Scope.$$logError(e)
           }
-        } catch (e) {
-          Scope.$$logError(e)
         }
-      }    
-    }
+      }
+      return continueLoop
+    })
     return wasDirty
+  }
+
+  $$everyScope(fn) {
+    if (fn(this)) this.$$children.every((child) => child.$$everyScope(fn))
+    else return false
   }
 
   $$beginPhase(phase) {

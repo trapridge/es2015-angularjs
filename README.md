@@ -8,4 +8,4 @@ A WIP implementation of AngularJS 1 in ES2015. Built with the help of @teropa's 
 
 # Run tests
 
-`npm run test`
+`npm test`

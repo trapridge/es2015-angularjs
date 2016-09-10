@@ -1,5 +1,7 @@
 import Scope from './scope'
 
+const noop = () => {}
+
 describe('Scope', function () {
   let scope
 
@@ -968,8 +970,56 @@ describe('Scope', function () {
 
       scope.$digest()
 
-      expect(scope.gotNewValue).toBe('a', 'page 103')
+      expect(child.gotNewValue).toBe('a')
     })
+
+    it('digests from root on $apply', () => {
+      const child = scope.$new()
+      const child2 = scope.$new()
+
+      scope.aValue = 'a'
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => { scope.counter++ }
+      )
+
+      child2.$apply(noop)
+      expect(scope.counter).toBe(1)
+    })
+
+    it('schedules a digest from root on $evalAsync', (done) => {
+      const child = scope.$new()
+      const child2 = scope.$new()
+
+      scope.aValue = 'a'
+      scope.counter = 0
+
+      scope.$watch(
+        (scope) => scope.aValue,
+        (newValue, oldValue, scope) => { scope.counter++ }
+      )
+
+      child2.$evalAsync(noop)
+
+      setTimeout(() => {
+        expect(scope.counter).toBe(1)
+        done()
+      }, 50)
+    })  
+
+    describe('isolated scope', () => {
+
+      it('does not inherit the parent\'s properties', () => {
+        scope.aValue = [1, 2, 3]
+        const child = scope.$new(true)
+
+        expect(child.aValue).toBeUndefined()
+      })
+      
+    })
+
   })
 
 })
