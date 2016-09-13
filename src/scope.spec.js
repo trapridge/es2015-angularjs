@@ -1011,13 +1011,46 @@ describe('Scope', function () {
 
     describe('isolated scope', () => {
 
-      it('does not inherit the parent\'s properties', () => {
+      it('does not inherit the parent\'s attributes', () => {
         scope.aValue = [1, 2, 3]
         const child = scope.$new(true)
 
         expect(child.aValue).toBeUndefined()
       })
       
+      it('cannot watch parent\'s attributes', () => {
+        scope.aValue = 'a'
+        const child = scope.$new(true)
+
+        child.$watch(
+          (scope) => scope.aValue,
+          (newValue, oldValue, scope) => {
+            child.valueWas = newValue
+          }
+        )
+
+        child.$digest()
+        expect(child.valueWas).toBeUndefined()
+
+        expect(child.aValue).toBeUndefined()
+      })
+
+      it('digests its isolated children', () => {
+        const child = scope.$new(true)
+
+        child.aValue = 'a'
+        child.$watch(
+          (scope) => scope.aValue,
+          (newValue, oldValue, scope) => {
+            scope.gotNewValue = newValue
+          }
+        )
+
+        scope.$digest()
+
+        expect(child.gotNewValue).toBe('a')
+      })
+
     })
 
   })
